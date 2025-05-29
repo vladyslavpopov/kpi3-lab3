@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"https://github.com/vladyslavpopov/kpi3-lab3/painter"
+	"https:/github.com/vladyslavpopov/kpi3-lab3/painter"
 )
 
 func TestParser_Parse(t *testing.T) {
