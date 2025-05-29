@@ -2,59 +2,64 @@ package painter
 
 import (
 	"image"
+	"image/color"
 
 	"golang.org/x/exp/shiny/screen"
 )
 
-// Receiver отримує текстуру, яка була підготовлена в результаті виконання команд у циклі подій.
 type Receiver interface {
 	Update(t screen.Texture)
 }
 
-// Loop реалізує цикл подій для формування текстури отриманої через виконання операцій отриманих з внутрішньої черги.
 type Loop struct {
 	Receiver Receiver
-
-	next screen.Texture // текстура, яка зараз формується
-	prev screen.Texture // текстура, яка була відправлення останнього разу у Receiver
-
-	mq messageQueue
-
-	stop    chan struct{}
-	stopReq bool
+	state    State
+	next     screen.Texture
+	prev     screen.Texture
+	stop     chan struct{}
 }
 
-var size = image.Pt(400, 400)
-
-// Start запускає цикл подій. Цей метод потрібно запустити до того, як викликати на ньому будь-які інші методи.
 func (l *Loop) Start(s screen.Screen) {
-	l.next, _ = s.NewTexture(size)
-	l.prev, _ = s.NewTexture(size)
-
-	// TODO: стартувати цикл подій.
+	l.state = State{BgColor: color.Black}
+	l.next, _ = s.NewTexture(image.Pt(800, 800))
+	l.prev, _ = s.NewTexture(image.Pt(800, 800))
+	l.stop = make(chan struct{})
+	go l.eventLoop()
 }
 
-// Post додає нову операцію у внутрішню чергу.
 func (l *Loop) Post(op Operation) {
-	if update := op.Do(l.next); update {
-		l.Receiver.Update(l.next)
-		l.next, l.prev = l.prev, l.next
+	if op.Do(&l.state) {
+		l.render()
 	}
 }
 
-// StopAndWait сигналізує про необхідність завершити цикл та блокується до моменту його повної зупинки.
 func (l *Loop) StopAndWait() {
+	close(l.stop)
 }
 
-// TODO: Реалізувати чергу подій.
-type messageQueue struct{}
+func (l *Loop) render() {
+	l.next.Fill(l.next.Bounds(), l.state.BgColor, screen.Src)
 
-func (mq *messageQueue) push(op Operation) {}
+	if l.state.BgRect != nil {
+		l.next.Fill(*l.state.BgRect, color.Black, screen.Over)
+	}
 
-func (mq *messageQueue) pull() Operation {
-	return nil
+	for _, fig := range l.state.Figures {
+		centerX := int(fig.X * 800)
+		centerY := int(fig.Y * 800)
+		size := 100
+
+		vertical := image.Rect(centerX-25, centerY-size, centerX+25, centerY+size)
+		l.next.Fill(vertical, color.RGBA{R: 255, G: 255, A: 255}, screen.Over)
+
+		horizontal := image.Rect(centerX-size, centerY-25, centerX+size, centerY+25)
+		l.next.Fill(horizontal, color.RGBA{R: 255, G: 255, A: 255}, screen.Over)
+	}
+
+	l.Receiver.Update(l.next)
+	l.next, l.prev = l.prev, l.next
 }
 
-func (mq *messageQueue) empty() bool {
-	return false
+func (l *Loop) eventLoop() {
+	<-l.stop
 }
