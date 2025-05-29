@@ -1,48 +1,95 @@
 package painter
 
 import (
+	"image"
 	"image/color"
-
-	"golang.org/x/exp/shiny/screen"
 )
 
-// Operation змінює вхідну текстуру.
 type Operation interface {
-	// Do виконує зміну операції, повертаючи true, якщо текстура вважається готовою для відображення.
-	Do(t screen.Texture) (ready bool)
+	Do(state *State) (ready bool)
 }
 
-// OperationList групує список операції в одну.
 type OperationList []Operation
 
-func (ol OperationList) Do(t screen.Texture) (ready bool) {
-	for _, o := range ol {
-		ready = o.Do(t) || ready
+func (ol OperationList) Do(state *State) (ready bool) {
+	for _, op := range ol {
+		ready = op.Do(state) || ready
 	}
 	return
 }
 
-// UpdateOp операція, яка не змінює текстуру, але сигналізує, що текстуру потрібно розглядати як готову.
-var UpdateOp = updateOp{}
+type State struct {
+	BgColor color.Color
+	BgRect  *image.Rectangle
+	Figures []Figure
+}
 
-type updateOp struct{}
+type Figure struct {
+	X, Y float32
+}
 
-func (op updateOp) Do(t screen.Texture) bool { return true }
+type WhiteFill struct{}
 
-// OperationFunc використовується для перетворення функції оновлення текстури в Operation.
-type OperationFunc func(t screen.Texture)
-
-func (f OperationFunc) Do(t screen.Texture) bool {
-	f(t)
+func (op WhiteFill) Do(state *State) bool {
+	state.BgColor = color.White
 	return false
 }
 
-// WhiteFill зафарбовує тестуру у білий колір. Може бути викоистана як Operation через OperationFunc(WhiteFill).
-func WhiteFill(t screen.Texture) {
-	t.Fill(t.Bounds(), color.White, screen.Src)
+type GreenFill struct{}
+
+func (op GreenFill) Do(state *State) bool {
+	state.BgColor = color.RGBA{G: 0xff, A: 0xff}
+	return false
 }
 
-// GreenFill зафарбовує тестуру у зелений колір. Може бути викоистана як Operation через OperationFunc(GreenFill).
-func GreenFill(t screen.Texture) {
-	t.Fill(t.Bounds(), color.RGBA{G: 0xff, A: 0xff}, screen.Src)
+type BgRect struct {
+	X1, Y1, X2, Y2 float32
+}
+
+func (op BgRect) Do(state *State) bool {
+	if op.X1 >= op.X2 || op.Y1 >= op.Y2 {
+		return false
+	}
+	rect := image.Rect(
+		int(op.X1*800), int(op.Y1*800),
+		int(op.X2*800), int(op.Y2*800),
+	)
+	state.BgRect = &rect
+	return false
+}
+
+type AddFigure struct {
+	X, Y float32
+}
+
+func (op AddFigure) Do(state *State) bool {
+	state.Figures = append(state.Figures, Figure{X: op.X, Y: op.Y})
+	return false
+}
+
+type Move struct {
+	DX, DY float32
+}
+
+func (op Move) Do(state *State) bool {
+	for i := range state.Figures {
+		state.Figures[i].X += op.DX
+		state.Figures[i].Y += op.DY
+	}
+	return false
+}
+
+type Reset struct{}
+
+func (op Reset) Do(state *State) bool {
+	state.BgColor = color.Black
+	state.BgRect = nil
+	state.Figures = nil
+	return false
+}
+
+type Update struct{}
+
+func (op Update) Do(state *State) bool {
+	return true
 }
